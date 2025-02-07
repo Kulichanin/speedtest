@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "speedtest.fullname" . }}
+  labels:
+    {{- include "speedtest.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "speedtest.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "speedtest.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "speedtest.serviceAccountName" . }}
+      containers:
+        - name: {{ .Values.webserver.name }}
+          image: "{{ .Values.webserver.repository }}:{{ .Values.webserver.tag | default "latest" }}"
+          imagePullPolicy: {{ .Values.webserver.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.webserver.port }}
+              protocol: TCP
+          volumeMounts:
+          {{- with .Values.volumeMountsStatic }}
+              {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.volumeMountsWebserver }}
+              {{- toYaml . | nindent 12 }}
+          {{- end }}
+        - name: {{ .Values.app.name }}
+          image: "{{ .Values.app.repository }}:{{ .Values.app.tag | default "latest" }}"
+          imagePullPolicy: {{ .Values.app.pullPolicy }}
+          {{- with .Values.envApp }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.app.port }}
+              protocol: TCP
+          volumeMounts:
+          {{- with .Values.volumeMountsStatic }}
+              {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.volumeMountsApp }}
+              {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.volumes }}
+      volumes:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

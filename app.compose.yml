@@ -1,0 +1,83 @@
+name: rbmdkrfinalapp
+
+services:
+  caddy:
+    image: caddy:alpine
+    restart: always
+    depends_on:
+      - speedtest
+    ports:
+      - 8080:80
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - static-content:/var/www/html
+      - .infra/caddy/Caddyfile:/etc/caddy/Caddyfile
+    networks:
+      - app-tier
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: localhost:24224
+        tag: docker.{{.Name}}
+
+  speedtest:
+    build:
+      context: .
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      - MODE=frontend
+      - TELEMETRY=true
+      - ENABLE_ID_OBFUSCATION=true
+      - EMAIL=mr.gn0m@yandex.ru
+      - PASSWORD=test1
+      - db_type=mysql
+      - db_username=speedtest
+      - db_password=speedtest!
+      - db_hostname=mysql
+      - db_name=speedtest_db
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - static-content:/var/www/html
+      - ./task_servers.json:/servers.json
+    networks:
+      - app-tier
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: localhost:24224
+        tag: docker.{{.Name}}
+
+  mysql:
+    image: mysql/mysql-server:8.0
+    command: ["mysqld", "--default-authentication-plugin=mysql_native_password"]
+    ports:
+      - 3306:3306
+    environment:
+      - MYSQL_DATABASE=speedtest_db
+      - MYSQL_USER=speedtest
+      - MYSQL_PASSWORD=speedtest!
+      - MYSQL_RANDOM_ROOT_PASSWORD=yes
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: 7s
+      timeout: 5s
+      retries: 10
+      start_period: 0s
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /usr/local/var/mysql:/var/lib/mysql
+    networks:
+      - app-tier
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: localhost:24224
+        tag: docker.{{.Name}}
+
+volumes:
+  static-content:
+
+networks:
+  app-tier:

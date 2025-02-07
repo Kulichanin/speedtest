@@ -1,0 +1,15 @@
+.git
+.github
+.gitignore
+.infra	
+.logo
+*.md
+*.yml
+examples
+wiki
+task_servers.json
+docker/servers.json
+Dockerfile
+LICENSE
+up.sh
+down.sh

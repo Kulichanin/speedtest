@@ -1,0 +1,92 @@
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: pvc-app
+spec:
+  storageClassName: nfs-sc
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+  labels:
+    app: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: app
+  template:
+    metadata:
+      labels:
+        app: app
+      annotations:
+        vault.hashicorp.com/agent-inject: 'true'
+        vault.hashicorp.com/role: 'speedtest'
+        vault.hashicorp.com/agent-inject-secret-config.env: 'secret/speedtest/config'
+        vault.hashicorp.com/agent-inject-template-config.env: |
+          {{- with secret "secret/speedtest/config" -}}
+          {{- range $key, $value := .Data }}
+          export {{ $key }}={{ $value }}
+          {{- end }}
+          {{- end }}
+    spec:
+      serviceAccountName: vault
+      containers:
+        - name: caddy
+          image: harbor-192-168-1-20.nip.io/speedtest/caddy:alpine
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: static-app
+              mountPath: /var/www/html
+            - name: caddyconfigmap
+              mountPath: /etc/caddy
+        - name: speedtest
+          image: harbor-192-168-1-20.nip.io/speedtest/app:prod_new
+          env:
+            - name: MODE
+              value: "frontend"
+            - name: TELEMETRY
+              value: "true"
+            - name: ENABLE_ID_OBFUSCATION
+              value: "true"
+          ports:
+            - containerPort: 9000
+          volumeMounts:
+            - name: static-app
+              mountPath: /var/www/html
+            - name: servers-list
+              mountPath: /etc/app/
+      volumes:
+        - name: static-app
+          persistentVolumeClaim:
+            claimName: pvc-app
+        - name: servers-list
+          configMap:
+            name: servers-list
+        - name: caddyconfigmap
+          configMap:
+            name: caddyconfigmap
+      imagePullSecrets:
+        - name: homelab-harbor
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: app-lb
+  name: app-lb
+  namespace: default
+spec:
+  ports:
+    - port: 80
+      targetPort: 80
+  selector:
+    app: app
+  type: LoadBalancer

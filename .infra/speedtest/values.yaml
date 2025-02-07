@@ -1,0 +1,152 @@
+replicaCount: 1
+
+webserver:
+  name: caddy
+  repository: harbor-192-168-124-40.nip.io/speedtest/caddy
+  pullPolicy: IfNotPresent
+  tag: "alpine"
+  port: 80
+
+app:
+  name: app
+  repository: harbor-192-168-124-40.nip.io/speedtest/app
+  pullPolicy: Always
+  tag: "vault"
+  port: 9000
+
+imagePullSecrets: 
+  - name: homelab-harbor
+# This is to override the chart name.
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: false
+  automount: true
+  annotations: {}
+  name: "vault"
+
+envApp: 
+  - name: MODE
+    value: "frontend"
+  - name: TELEMETRY
+    value: "true"
+  - name: ENABLE_ID_OBFUSCATION
+    value: "true" 
+
+podAnnotations: 
+  vault.hashicorp.com/agent-inject: 'true'
+  vault.hashicorp.com/role: 'speedtest'
+  vault.hashicorp.com/agent-inject-secret-config.env: 'secret/speedtest/config'
+  vault.hashicorp.com/agent-inject-template-config.env: |
+    {{- with secret "secret/speedtest/config" -}}
+    {{- range $key, $value := .Data }}
+    export {{ $key }}={{ $value }}
+    {{- end }}
+    {{- end }}
+
+podLabels: {}
+
+service:
+  type: LoadBalancer
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: chart-example.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+  #  - secretName: chart-example-tls
+  #    hosts:
+  #      - chart-example.local
+
+resources: {}
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+# This is to setup the liveness and readiness probes more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
+livenessProbe:
+  httpGet:
+    path: /
+    port: http
+readinessProbe:
+  httpGet:
+    path: /
+    port: http
+
+#This section is for setting up autoscaling more information can be found here: https://kubernetes.io/docs/concepts/workloads/autoscaling/
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
+
+# Additional volumes on the output Deployment definition.
+volumes: 
+- name: servers-list
+  configMap:
+    name: servers-list
+- name: caddyconfigmap
+  configMap:
+    name: caddyconfigmap
+- name: static-app
+  persistentVolumeClaim:
+    claimName: pvc-app 
+
+# Additional volumeMounts on the output Deployment definition.
+volumeMountsStatic:
+  - name: static-app
+    mountPath: /var/www/html
+
+volumeMountsWebserver:
+  - name: caddyconfigmap
+    mountPath: /etc/caddy
+
+volumeMountsApp:
+  - name: servers-list
+    mountPath: /etc/app
+
+## Enable persistence using Persistent Volume Claims
+## ref: https://kubernetes.io/docs/user-guide/persistent-volumes/
+##
+persistence:
+  type: pvc
+  enabled: true
+  storageClassName: nfs-sc
+  accessModes:
+    - ReadWriteMany
+  size: 1Gi
+  # annotations: {}
+  finalizers:
+    - kubernetes.io/pvc-protection
+  # selectorLabels: {}
+  ## Sub-directory of the PV to mount. Can be templated.
+  # subPath: ""
+  ## Name of an existing PVC. Can be templated.
+  # existingClaim:
+  ## Extra labels to apply to a PVC.
+  extraPvcLabels: {}
+  disableWarning: false
+
+  ## If persistence is not enabled, this allows to mount the
+  ## local storage in-memory to improve performance
+  ##
+  inMemory:
+    enabled: false
+    ## The maximum usage on memory medium EmptyDir would be
+    ## the minimum value between the SizeLimit specified
+    ## here and the sum of memory limits of all containers in a pod
+    ##
+    # sizeLimit: 300Mi

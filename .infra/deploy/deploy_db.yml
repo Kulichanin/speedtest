@@ -1,0 +1,135 @@
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: mysql-pvc
+spec:
+  storageClassName: nfs-sc
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 3Gi
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dbsecret
+type: Opaque
+data:
+  MYSQL_DATABASE: c3BlZWR0ZXN0X2Ri
+  MYSQL_PASSWORD: c3BlZWR0ZXN0MVE=
+  MYSQL_USER: c3BlZWR0ZXN0
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  labels:
+    app: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "speedtest"
+        vault.hashicorp.com/agent-inject-secret-config.env: "secret/speedtest/config"
+        vault.hashicorp.com/agent-inject-template-config.env: |
+          {{- with secret "secret/speedtest/config" -}}
+          {{- range $key, $value := .Data }}
+          export {{ $key }}={{ $value }}
+          {{- end }}
+          {{- end }}
+    spec:
+      serviceAccountName: vault
+      securityContext:
+        runAsUser: 999
+        fsGroup: 999
+      containers:
+        - name: mysql
+          image: mysql:8.0-debian
+          env:
+            - name: MYSQL_RANDOM_ROOT_PASSWORD
+              value: "yes"
+            - name: MYSQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: dbsecret
+                  key: MYSQL_USER
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: dbsecret
+                  key: MYSQL_PASSWORD
+            - name: MYSQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: dbsecret
+                  key: MYSQL_DATABASE
+          ports:
+            - containerPort: 3306
+          volumeMounts:
+            - name: mysql-data
+              mountPath: /var/lib/mysql
+            - name: dbsecret
+              mountPath: /etc/dbsecret
+              readOnly: true
+        - name: exporter
+          image: prom/mysqld-exporter 
+          args:
+            - "--mysqld.address=127.0.0.1:3306"
+            - "--mysqld.username=speedtest"
+          env:
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: dbsecret
+                  key: MYSQL_PASSWORD  
+          ports:
+            - containerPort: 9104
+          volumeMounts:
+            - name: dbsecret
+              mountPath: /etc/dbsecret
+              readOnly: true    
+      volumes:
+        - name: mysql-data
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+        - name: dbsecret
+          secret:
+            secretName: dbsecret
+            optional: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  labels:
+    service: mysql
+spec:
+  ports:
+    - name: mysql
+      port: 3306
+      protocol: TCP
+    - name: mysql-exporter
+      port: 9104
+  selector:
+    app: mysql
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: mysql
+  labels:
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      service: mysql
+  endpoints:
+  - port: mysql-exporter

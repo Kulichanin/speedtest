@@ -1,0 +1,23 @@
+:80 {
+
+	header {
+        Access-Control-Allow-Origin *
+        Access-Control-Allow-Credentials true
+        Access-Control-Allow-Methods *
+        Access-Control-Allow-Headers *
+    }
+	
+	request_body {
+		max_size 20MB
+	}
+
+	root * /var/www/html/
+	encode zstd gzip
+	php_fastcgi 127.0.0.1:9000
+	file_server
+
+	log {
+		output stdout
+		level DEBUG
+  	}
+}

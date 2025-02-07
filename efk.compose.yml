@@ -1,0 +1,68 @@
+name: rbmdkrfinalefk
+
+services:
+  elasticsearch:
+    image: elasticsearch:7.17.24
+    environment:
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xmx1g -Xmx1g"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test: curl -u elastic:elastic -s -f elasticsearch:9200/_cat/health >/dev/null || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - elastic_data:/usr/share/elasticsearch/data
+    networks:
+      - logging-tier
+
+  fluentd:
+    build: .infra/fluentd
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    volumes:
+      - .infra/fluentd/conf:/fluentd/etc
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "24224:24224"
+      - "24224:24224/udp"
+    networks:
+      - logging-tier
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 10m
+        max-file: "5"
+
+  kibana:
+    image: kibana:7.17.24
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+    mem_limit: 512m
+    ports:
+      - "5601:5601"
+    networks:
+      - logging-tier
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: localhost:24224
+        tag: docker.{{.Name}}
+
+volumes:
+  elastic_data:
+
+networks:
+  logging-tier:
