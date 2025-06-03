@@ -6,6 +6,13 @@ No Flash, No Java, No Websocket, No Bullshit.
 
 This is a very lightweight speed test implemented in Javascript, using XMLHttpRequest and Web Workers.
 
+**This repository is a fork of the [LibreSpeed](https://github.com/librespeed/speedtest) application. My work here is in the `.infra` repository**
+**The application has been prepared for deployment in the cluster k8s.**
+
+## HELM version app
+
+A helm manifest has been created in the repository `.infra/speedtest/`
+
 ## Try it
 
 [Take a speed test](https://librespeed.org)
